@@ -1,92 +1,86 @@
-from supabase import create_client, Client
-import time, random
-from datetime import datetime, timedelta
-import traceback
+# smart_recommender.py
+# ✅ نسخة مستقرة ومناسبة لـ Render
+# تعمل على مراقبة جدول user_behavior وترشيح المنتجات
 
-# ✅ إعداد الاتصال الآمن مع Supabase عبر API الرسمي
-SUPABASE_URL = "https://xnyzgnfiqczxlzuocttt.supabase.co"
-SUPABASE_KEY = "ضع هنا مفتاحك السري من Supabase (service_role أو anon)"
+import os
+import time
+from supabase import create_client
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-print("✅ تم الاتصال بـ Supabase API بنجاح")
+# ==============================
+# تهيئة الاتصال بـ Supabase
+# ==============================
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# إعداد زمن التحديث
-INTERVAL = 15  # كل 15 ثانية يتحقق من السلوك الجديد
-last_check = datetime.utcnow() - timedelta(seconds=INTERVAL)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("❌ SUPABASE_URL أو SUPABASE_KEY غير موجودين في المتغيرات البيئية")
 
-# 🔄 الحلقة الرئيسية
-while True:
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+print("✅ Connected successfully to Supabase!")
+
+# ==============================
+# دالة تنظيف النصوص من الرموز غير ASCII
+# ==============================
+def clean_text(text):
+    if not text:
+        return ""
+    return ''.join(c for c in text if ord(c) < 128)
+
+# ==============================
+# دالة تجلب أحدث سلوك للمستخدمين
+# ==============================
+def get_latest_behaviors(limit=10):
     try:
-        # 1️⃣ جلب أحدث السلوكيات الجديدة
-        behaviors = supabase.table("user_behavior") \
-            .select("*") \
-            .order("created_at", desc=True) \
-            .limit(10) \
-            .execute().data or []
+        data = supabase.table("user_behavior").select("*").order("created_at", desc=True).limit(limit).execute()
+        print(f"✅ Fetched {len(data.data)} recent behaviors")
+        return data.data
+    except Exception as e:
+        print("❌ Error while fetching user_behavior table:")
+        print(str(e).encode('utf-8', errors='ignore').decode('utf-8'))
+        return []
 
-        if behaviors:
-            print(f"🟢 تم العثور على {len(behaviors)} سلوك جديد.")
+# ==============================
+# دالة ترشيح المنتجات للمستخدمين بناءً على السلوك
+# ==============================
+def recommend_products_for_user(user_id):
+    try:
+        behaviors = supabase.table("user_behavior").select("*").eq("user_id", user_id).limit(10).execute()
+        if not behaviors.data:
+            print(f"⚠️ No behaviors found for user {user_id}")
+            return []
+
+        recommended = []
+        for b in behaviors.data:
+            action_type = clean_text(b.get("action_type", ""))
+            section_id = b.get("section_id", None)
+
+            # خوارزمية ترشيح تجريبية بسيطة
+            if section_id:
+                products = supabase.table("products").select("*").eq("section_id", section_id).limit(3).execute()
+                for p in products.data:
+                    recommended.append(p)
+
+        print(f"✅ Recommended {len(recommended)} products for user {user_id}")
+        return recommended
+    except Exception as e:
+        print("❌ Error in recommendation process:")
+        print(str(e).encode('utf-8', errors='ignore').decode('utf-8'))
+        return []
+
+# ==============================
+# الحلقة الرئيسية (تعمل بشكل دائم)
+# ==============================
+if __name__ == "__main__":
+    print("🚀 Smart Recommender is running...")
+
+    while True:
+        try:
+            behaviors = get_latest_behaviors(limit=5)
             for b in behaviors:
                 user_id = b.get("user_id")
-                section_id = b.get("section_id")
-                product_id = b.get("product_id")
-                base_score = float(b.get("action_score") or 0.5)
-
-                # 2️⃣ اختيار منتجات عشوائية من نفس القسم
-                products = supabase.table("smart_products_view") \
-                    .select("id, name, price, image, section_id") \
-                    .eq("is_active", True) \
-                    .eq("section_id", section_id) \
-                    .neq("id", product_id) \
-                    .order("updated_at", desc=True) \
-                    .limit(5) \
-                    .execute().data or []
-
-                if not products:
-                    print(f"⚠️ لا توجد منتجات متاحة في القسم {section_id}")
-                    continue
-
-                print(f"✨ إنشاء توصيات جديدة للمستخدم {user_id}:")
-                for p in products:
-                    new_score = round(base_score * random.uniform(0.4, 1.0), 2)
-                    reason = f"نظام تجريبي: ترشيح ديناميكي - {p['name']}"
-
-                    # 3️⃣ إضافة التوصية إلى user_recommendations
-                    supabase.table("user_recommendations").insert({
-                        "user_id": user_id,
-                        "product_id": p["id"],
-                        "section_id": section_id,
-                        "reason": reason,
-                        "score": new_score
-                    }).execute()
-
-                    print(f"  ✅ رشّح المنتج {p['id']} ({p['name']}) بدرجة {new_score}")
-
-                    # 4️⃣ تحديث بيانات المنتج في smart_products_view
-                    current = supabase.table("smart_products_view").select("recommendation_score, smart_rank").eq("id", p["id"]).execute().data
-                    if current:
-                        old_score = current[0].get("recommendation_score") or 0
-                        total_score = old_score + new_score
-                        smart_rank = round(total_score / 10, 2)
-
-                        supabase.table("smart_products_view").update({
-                            "recommendation_score": total_score,
-                            "smart_rank": smart_rank,
-                            "is_recommended": True,
-                            "updated_at": datetime.utcnow().isoformat()
-                        }).eq("id", p["id"]).execute()
-
-                print("🔁 تم إنشاء توصيات مختلفة ومحدثة لهذا المستخدم.\n")
-
-        else:
-            print("... لا توجد أحداث جديدة حالياً")
-
-        # 5️⃣ تحديث وقت الفحص
-        last_check = datetime.utcnow()
-
-    except Exception as e:
-        print("❌ خطأ أثناء التنفيذ:", e)
-        traceback.print_exc()
-
-    # الانتظار قبل التحقق التالي
-    time.sleep(INTERVAL)
+                if user_id:
+                    recommend_products_for_user(user_id)
+            time.sleep(10)  # ⏱️ يحدث كل 10 ثوانٍ
+        except Exception as e:
+            print("⚠️ Unexpected error:", e)
+            time.sleep(15)
