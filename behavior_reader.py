@@ -1,18 +1,24 @@
 # behavior_reader.py
 from SPS import supabase
+from datetime import datetime, timedelta
 
 def read_behavior_data():
     """
     يقرأ بيانات المستخدمين من جدول user_behavior خلال آخر 24 ساعة فقط.
     """
     try:
-        response = supabase.table("user_behavior") \
-            .select("*") \
-            .gte("created_at", "now() - interval '1 day'") \
-            .order("created_at", desc=True) \
-            .execute()
+        # نحسب التاريخ من بايثون
+        cutoff_time = (datetime.utcnow() - timedelta(days=1)).isoformat()
 
-        data = response.data
+        response = (
+            supabase.table("user_behavior")
+            .select("*")
+            .gte("created_at", cutoff_time)
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        data = response.data or []
         print(f"✅ تم جلب {len(data)} سجل من جدول السلوك.")
         return data
 
@@ -20,8 +26,7 @@ def read_behavior_data():
         print(f"❌ خطأ أثناء قراءة جدول السلوك: {e}")
         return []
 
-# اختبار سريع عند التشغيل المباشر
 if __name__ == "__main__":
     behaviors = read_behavior_data()
-    for b in behaviors[:3]:  # عرض أول 3 سجلات فقط للتجربة
+    for b in behaviors[:3]:
         print(b)
