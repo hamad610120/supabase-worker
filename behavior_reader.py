@@ -1,14 +1,14 @@
 # behavior_reader.py
 from SPS import supabase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 def read_behavior_data():
     """
     يقرأ بيانات المستخدمين من جدول user_behavior خلال آخر 24 ساعة فقط.
     """
     try:
-        # نحسب التاريخ من بايثون
-        cutoff_time = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        # نحسب التاريخ من بايثون (بصيغة UTC الحديثة)
+        cutoff_time = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
         response = (
             supabase.table("user_behavior")
