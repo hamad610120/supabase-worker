@@ -2,12 +2,16 @@
 from SPS import supabase
 from behavior_reader import read_behavior_data
 
+
 def calculate_score(action_score, confidence, views_count, clicks_count):
     """
     دالة لحساب درجة الذكاء (smart_score) بناءً على بيانات السلوك.
     """
     try:
-        score = (float(action_score) * 0.6) + (float(confidence) * 0.3) + ((clicks_count + 1) / (views_count + 1) * 0.1)
+        score = (float(action_score) * 0.6) + \
+                (float(confidence) * 0.3) + \
+                ((clicks_count + 1) / (views_count + 1) * 0.1)
+
         return round(score, 3)
     except Exception:
         return 0.0
@@ -24,11 +28,25 @@ def generate_recommendations():
             return
 
         for b in behaviors:
+
+            # -------------------------------------------------------------
+            # 🚫 1) تجاهل أي سجل ليس له product_id (منع الخطأ 100%)
+            # -------------------------------------------------------------
+            if not b.get("product_id"):
+                # مثل session_start أو سلوك ليس له منتج
+                continue
+
             user_id = b.get("user_id")
             product_id = b.get("product_id")
-            score = calculate_score(b.get("action_score", 0), b.get("confidence", 0), b.get("views_count", 0), b.get("clicks_count", 0))
 
-            # التحقق إذا كانت التوصية موجودة
+            score = calculate_score(
+                b.get("action_score", 0),
+                b.get("confidence", 0),
+                b.get("views_count", 0),
+                b.get("clicks_count", 0)
+            )
+
+            # تحقق إذا كانت التوصية موجودة
             existing = (
                 supabase.table("ai_recommendations")
                 .select("*")
@@ -43,6 +61,7 @@ def generate_recommendations():
                     "score": score,
                     "updated_at": "now()"
                 }).eq("user_id", user_id).eq("product_id", product_id).execute()
+
             else:
                 # إنشاء توصية جديدة
                 supabase.table("ai_recommendations").insert({
@@ -52,7 +71,7 @@ def generate_recommendations():
                     "notes": "Generated automatically from user_behavior",
                 }).execute()
 
-        print("✅ تم إنشاء أو تحديث جدول التوصيات الذكية بنجاح.")
+        print("✅ تم إنشاء أو تحديث توصيات الذكاء بنجاح.")
 
     except Exception as e:
         print(f"❌ خطأ أثناء إنشاء التوصيات: {e}")
