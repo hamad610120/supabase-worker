@@ -1,6 +1,6 @@
 # ============================================================
 #  engine.py — المحرك الذكي المركزي
-#  نظام ذكاء شامل ينفذ أي أمر تكتبه في جدول system_commands
+#  ينفّذ أي أمر تكتبه في جدول system_commands
 # ============================================================
 
 import time
@@ -45,12 +45,12 @@ def update_command_status(cmd_id, status, result=None):
 
 
 # ============================================================
-# مشغّل الأوامر — ينفّذ أي أمر مكتوب في command
+# تنفيذ الأمر — يعتمد على العمود (command)
 # ============================================================
 
 def execute_command(cmd):
     cmd_id = cmd["id"]
-    command_text = cmd["command"]   # ← ← ← هنا تم التعديل
+    command_text = cmd["command"]   # ← ← ← هذا هو التعديل الصحيح
 
     print("\n--------------------------------------------------")
     print(f"🧠 تنفيذ أمر جديد:")
@@ -69,33 +69,39 @@ def execute_command(cmd):
         print(f"❌ فشل التنفيذ: {error_message}\n")
 
 
+
 # ============================================================
-# الذكاء الأساسي لمعالجة النص وتحويله لأمر فعلي
+# الذكاء الأساسي — تفسير النص وتنفيذ الإجراء المناسب
 # ============================================================
 
 def process_natural_command(text):
 
     t = text.strip().lower()
 
+    # ---- 1) تحليل السلوك ----
     if "سلوك" in t or "behavior" in t:
         return analyze_behavior_and_generate_predictions()
 
+    # ---- 2) بناء display الذكي ----
     if "عرض" in t or "display" in t:
         return rebuild_smart_display_for_all_users()
 
-    if "حذف" in t or "reset" in t or "مسح" in t:
+    # ---- 3) مسح جداول ----
+    if "حذف" in t or "مسح" in t or "reset" in t:
         return clear_tables_from_text(t)
 
+    # ---- 4) SQL مباشر ----
     if "sql:" in t:
         raw_sql = t.replace("sql:", "").strip()
         return execute_raw_sql(raw_sql)
 
+    # ---- 5) ذكاء عام ----
     return general_ai_interpretation(text)
 
 
 
 # ============================================================
-# A — تحليل السلوك وإنشاء التوصيات
+# (A) تحليل السلوك وإنشاء التوصيات
 # ============================================================
 
 def analyze_behavior_and_generate_predictions():
@@ -114,7 +120,6 @@ def analyze_behavior_and_generate_predictions():
     for b in behaviors:
         score = float(b.get("action_score", 0))
         confidence = float(b.get("confidence", 0))
-
         final_score = round((score * 0.7) + (confidence * 0.3), 3)
 
         supabase.table("ai_recommendations").insert({
@@ -129,8 +134,9 @@ def analyze_behavior_and_generate_predictions():
     return f"✔ تم تحليل {len(results)} سجل وإنشاء توصيات."
 
 
+
 # ============================================================
-# B — بناء smart_display
+# (B) بناء smart_display لكل المستخدمين
 # ============================================================
 
 def rebuild_smart_display_for_all_users():
@@ -157,40 +163,44 @@ def rebuild_smart_display_for_all_users():
     return f"✔ تم إنشاء عرض لـ {count} مستخدم."
 
 
+
 # ============================================================
-# C — مسح جداول
+# (C) مسح جداول
 # ============================================================
 
 def clear_tables_from_text(text):
-    if "التوصيات" in text:
+
+    if "التوصيات" in text or "recommendations" in text:
         supabase.table("ai_recommendations").delete().neq("id", "").execute()
         return "✔ تم مسح جدول التوصيات"
 
-    if "العرض" in text:
+    if "العرض" in text or "display" in text:
         supabase.table("smart_display").delete().neq("id", "").execute()
         return "✔ تم مسح جدول smart_display"
 
     return "⚠️ لم يتم العثور على جدول للمسح"
 
 
+
 # ============================================================
-# D — SQL مباشر
+# (D) SQL مباشر
 # ============================================================
 
 def execute_raw_sql(sql):
     try:
-        res = supabase.rpc("exec_sql", {"query": sql}).execute()
-        return f"✔ SQL Executed"
+        supabase.rpc("exec_sql", {"query": sql}).execute()
+        return f"✔ SQL Executed: {sql}"
     except Exception as e:
         return f"SQL Error: {e}"
 
 
+
 # ============================================================
-# E — ذكاء عام
+# (E) ذكاء عام
 # ============================================================
 
 def general_ai_interpretation(text):
-    return f"🤖 الأمر مستلم وسيتم دعمه لاحقًا: {text}"
+    return f"🤖 تمت قراءة الأمر، وسيتم دعم هذا النوع قريباً: {text}"
 
 
 
@@ -212,7 +222,6 @@ def start_engine():
             print("⏳ لا يوجد أوامر جديدة. الانتظار...")
 
         time.sleep(5)
-
 
 
 if __name__ == "__main__":
