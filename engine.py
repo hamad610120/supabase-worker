@@ -45,12 +45,12 @@ def update_command_status(cmd_id, status, result=None):
 
 
 # ============================================================
-# مشغّل الأوامر — ينفّذ أي أمر مكتوب في command_text
+# مشغّل الأوامر — ينفّذ أي أمر مكتوب في command
 # ============================================================
 
 def execute_command(cmd):
     cmd_id = cmd["id"]
-    command_text = cmd["command_text"]
+    command_text = cmd["command"]   # ← ← ← هنا تم التعديل
 
     print("\n--------------------------------------------------")
     print(f"🧠 تنفيذ أمر جديد:")
@@ -59,13 +59,7 @@ def execute_command(cmd):
     print("--------------------------------------------------")
 
     try:
-        # ================================================
-        #  هنا الذكاء الحقيقي — يتم تحليل نص الأمر وتنفيذه
-        # ================================================
-
         result = process_natural_command(command_text)
-
-        # النجاح
         update_command_status(cmd_id, "done", result)
         print("✅ تم التنفيذ بنجاح.\n")
 
@@ -80,51 +74,32 @@ def execute_command(cmd):
 # ============================================================
 
 def process_natural_command(text):
-    """
-    يستقبل نص بشري عادي مثل:
-    (حلل السلوك وأضف التوصيات)
-    ويحوّله إلى وظيفة فعلية.
-    """
 
     t = text.strip().lower()
 
-    # --------------------------------------------------------
-    # 1) تحليل السلوك → user_behavior
-    # --------------------------------------------------------
     if "سلوك" in t or "behavior" in t:
         return analyze_behavior_and_generate_predictions()
 
-    # --------------------------------------------------------
-    # 2) بناء smart_display
-    # --------------------------------------------------------
     if "عرض" in t or "display" in t:
         return rebuild_smart_display_for_all_users()
 
-    # --------------------------------------------------------
-    # 3) تنظيف جدول – reset / clear
-    # --------------------------------------------------------
     if "حذف" in t or "reset" in t or "مسح" in t:
         return clear_tables_from_text(t)
 
-    # --------------------------------------------------------
-    # 4) أمر SQL مباشر
-    # --------------------------------------------------------
     if "sql:" in t:
         raw_sql = t.replace("sql:", "").strip()
         return execute_raw_sql(raw_sql)
 
-    # --------------------------------------------------------
-    # 5) أي أمر عام
-    # --------------------------------------------------------
     return general_ai_interpretation(text)
 
 
 
 # ============================================================
-# (A) تحليل السلوك وإنشاء التوقعات
+# A — تحليل السلوك وإنشاء التوصيات
 # ============================================================
 
 def analyze_behavior_and_generate_predictions():
+
     behaviors = (
         supabase.table("user_behavior")
         .select("*")
@@ -133,9 +108,8 @@ def analyze_behavior_and_generate_predictions():
     ).data
 
     if not behaviors:
-        return "⚠️ لا يوجد بيانات سلوك."
+        return "⚠️ لا يوجد بيانات سلوك"
 
-    # تحليل بسيط مبدئي
     results = []
     for b in behaviors:
         score = float(b.get("action_score", 0))
@@ -150,23 +124,17 @@ def analyze_behavior_and_generate_predictions():
             "created_at": datetime.now(UTC).isoformat()
         }).execute()
 
-        results.append({
-            "user_id": b["user_id"],
-            "product_id": b.get("product_id"),
-            "score": final_score
-        })
+        results.append(final_score)
 
-    return f"تم تحليل {len(results)} سلوك وإنشاء توصيات."
+    return f"✔ تم تحليل {len(results)} سجل وإنشاء توصيات."
 
 
 # ============================================================
-# (B) بناء smart_display لكل المستخدمين
+# B — بناء smart_display
 # ============================================================
 
 def rebuild_smart_display_for_all_users():
-    print("🔄 إعادة بناء smart_display لكل المستخدمين...")
 
-    # جلب المستخدمين من جدول السلوك
     users = (
         supabase.table("user_behavior")
         .select("user_id")
@@ -174,8 +142,8 @@ def rebuild_smart_display_for_all_users():
     ).data
 
     user_ids = {u["user_id"] for u in users}
+    count = 0
 
-    total = 0
     for uid in user_ids:
         supabase.table("smart_display").insert({
             "user_id": uid,
@@ -184,53 +152,50 @@ def rebuild_smart_display_for_all_users():
             "source": "SYSTEM",
             "created_at": datetime.now(UTC).isoformat()
         }).execute()
-        total += 1
+        count += 1
 
-    return f"تم إنشاء عرض لعدد {total} مستخدم."
+    return f"✔ تم إنشاء عرض لـ {count} مستخدم."
 
 
 # ============================================================
-# (C) مسح جداول حسب النص
+# C — مسح جداول
 # ============================================================
 
 def clear_tables_from_text(text):
-    if "التوصيات" in text or "recommendations" in text:
+    if "التوصيات" in text:
         supabase.table("ai_recommendations").delete().neq("id", "").execute()
-        return "تم مسح جدول التوصيات."
+        return "✔ تم مسح جدول التوصيات"
 
-    if "العرض" in text or "display" in text:
+    if "العرض" in text:
         supabase.table("smart_display").delete().neq("id", "").execute()
-        return "تم مسح جدول smart_display."
+        return "✔ تم مسح جدول smart_display"
 
-    return "لم يتم العثور على جدول للمسح."
+    return "⚠️ لم يتم العثور على جدول للمسح"
 
 
 # ============================================================
-# (D) تنفيذ SQL مباشر
+# D — SQL مباشر
 # ============================================================
 
 def execute_raw_sql(sql):
     try:
         res = supabase.rpc("exec_sql", {"query": sql}).execute()
-        return f"SQL executed: {sql}"
+        return f"✔ SQL Executed"
     except Exception as e:
-        return f"SQL error: {e}"
+        return f"SQL Error: {e}"
 
 
 # ============================================================
-# (E) ذكاء عام لأي أمر آخر
+# E — ذكاء عام
 # ============================================================
 
 def general_ai_interpretation(text):
-    """
-    مستقبلًا يمكننا ربطه بـ GPT.
-    الآن نعيد نص توضيحي فقط.
-    """
-    return f"🤖 تم استقبال الأمر، لكن لا يوجد إجراء محدد له بعد: {text}"
+    return f"🤖 الأمر مستلم وسيتم دعمه لاحقًا: {text}"
+
 
 
 # ============================================================
-# المشغّل الرئيسي — يعمل للأبد
+# Loop الرئيسي
 # ============================================================
 
 def start_engine():
@@ -246,7 +211,8 @@ def start_engine():
         else:
             print("⏳ لا يوجد أوامر جديدة. الانتظار...")
 
-        time.sleep(5)  # يعمل كل 5 ثوانٍ
+        time.sleep(5)
+
 
 
 if __name__ == "__main__":
