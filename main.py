@@ -1,10 +1,9 @@
-# main.py — FINAL VERSION
-from SPS import db
+import SPS
 import traceback
 import time
 
 def load_and_run_modules():
-    supa = db()
+    supa = SPS.db()   # ← استدعاء الدالة بشكل مباشر من الملف
 
     modules = supa.table("python_modules") \
                   .select("*") \
@@ -19,16 +18,15 @@ def load_and_run_modules():
         code = module['code']
 
         try:
-            exec(code, globals())  # ← دمج وتشغيل الملف داخل المشروع
+            exec(code, globals())
             print(f"✔ تم تنفيذ {module['filename']} بنجاح\n")
 
         except Exception:
-            print(f"❌ خطأ أثناء تشغيل {module['filename']}:")
+            print("❌ خطأ أثناء تشغيل الملف:")
             print(traceback.format_exc())
 
 def auto_loop():
-    print("🔥 النظام يعمل… الملفات تأتي من Supabase فقط.")
-    print("🔄 أي ملف تضيفه في الجدول سيتم تشغيله تلقائيًا.")
+    print("🔥 النظام يعمل…")
     while True:
         load_and_run_modules()
         time.sleep(3)
