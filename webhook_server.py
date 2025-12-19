@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL FIXED)
+# WATI Webhook Receiver (FINAL + FLUSH)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -26,9 +26,9 @@ def receive_webhook():
     try:
         data = request.json or {}
 
-        # 🔴 طباعة البيانات الخام (مهم جدًا)
-        print("📦 RAW PAYLOAD FROM WATI ↓↓↓")
-        print(data)
+        # 🔴 طباعة البيانات الخام (إجباري مع flush)
+        print("📦 RAW PAYLOAD FROM WATI ↓↓↓", flush=True)
+        print(data, flush=True)
 
         whatsapp_number = None
         message_text = None
@@ -46,11 +46,21 @@ def receive_webhook():
             message_text = msg.get("text") or msg.get("body")
 
         # ---------- شكل 3 (fallback) ----------
-        whatsapp_number = whatsapp_number or data.get("whatsappNumber") or data.get("from") or data.get("phone")
-        message_text = message_text or data.get("messageText") or data.get("text") or data.get("body")
+        whatsapp_number = (
+            whatsapp_number
+            or data.get("whatsappNumber")
+            or data.get("from")
+            or data.get("phone")
+        )
+        message_text = (
+            message_text
+            or data.get("messageText")
+            or data.get("text")
+            or data.get("body")
+        )
 
         if not whatsapp_number or not message_text:
-            print("⚠️ MESSAGE RECEIVED BUT COULD NOT PARSE CONTENT")
+            print("⚠️ MESSAGE RECEIVED BUT COULD NOT PARSE CONTENT", flush=True)
             return jsonify({"status": "ignored"}), 200
 
         supa = SPS.db()
@@ -62,12 +72,15 @@ def receive_webhook():
             "received_at": datetime.datetime.utcnow().isoformat()
         }).execute()
 
-        print(f"✅ SAVED MESSAGE FROM {whatsapp_number}: {message_text}")
+        print(
+            f"✅ SAVED MESSAGE FROM {whatsapp_number}: {message_text}",
+            flush=True
+        )
 
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print("❌ WEBHOOK ERROR:", e)
+        print("❌ WEBHOOK ERROR:", e, flush=True)
         return jsonify({"status": "error"}), 500
 
 
