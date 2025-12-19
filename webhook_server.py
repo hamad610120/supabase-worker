@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL)
+# WATI Webhook Receiver (FINAL FIXED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -26,32 +26,35 @@ def receive_webhook():
     try:
         data = request.json or {}
 
-        print("📩 WEBHOOK RECEIVED")
+        # 🔴 طباعة البيانات الخام (مهم جدًا)
+        print("📦 RAW PAYLOAD FROM WATI ↓↓↓")
         print(data)
 
-        # Extract WhatsApp number
-        whatsapp_number = (
-            data.get("whatsappNumber")
-            or data.get("phone")
-            or data.get("from")
-            or data.get("contact", {}).get("phone")
-        )
+        whatsapp_number = None
+        message_text = None
 
-        # Extract message text
-        message_text = (
-            data.get("message")
-            or data.get("text")
-            or data.get("messageText")
-            or data.get("body")
-        )
+        # ---------- شكل 1 ----------
+        if "message" in data and isinstance(data["message"], dict):
+            msg = data["message"]
+            whatsapp_number = msg.get("from") or msg.get("waId")
+            message_text = msg.get("text")
+
+        # ---------- شكل 2 ----------
+        if not whatsapp_number and "messages" in data and isinstance(data["messages"], list):
+            msg = data["messages"][0]
+            whatsapp_number = msg.get("from") or msg.get("waId")
+            message_text = msg.get("text") or msg.get("body")
+
+        # ---------- شكل 3 (fallback) ----------
+        whatsapp_number = whatsapp_number or data.get("whatsappNumber") or data.get("from") or data.get("phone")
+        message_text = message_text or data.get("messageText") or data.get("text") or data.get("body")
 
         if not whatsapp_number or not message_text:
-            print("⚠️ Missing whatsapp_number or message_text")
+            print("⚠️ MESSAGE RECEIVED BUT COULD NOT PARSE CONTENT")
             return jsonify({"status": "ignored"}), 200
 
         supa = SPS.db()
 
-        # Save message to database
         supa.table("incoming_messages").insert({
             "whatsapp_number": str(whatsapp_number),
             "message_text": str(message_text),
