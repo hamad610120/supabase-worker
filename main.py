@@ -88,6 +88,7 @@ def run_dynamic_engine():
         cur.close()
         conn.close()
 
+        # تشغيل كل وظيفة في Process مستقل
         for job in jobs:
             p = Process(target=execute_sql_job, args=(job,))
             p.start()
@@ -138,7 +139,7 @@ def load_and_run_modules():
 def python_modules_loop():
     while True:
         load_and_run_modules()
-        time.sleep(3)
+        time.sleep(3)   # تحديث الموديولات كل 3 ثواني
 
 
 # =========================================
@@ -147,7 +148,7 @@ def python_modules_loop():
 def dynamic_engine_loop():
     while True:
         run_dynamic_engine()
-        time.sleep(0.5)
+        time.sleep(0.5)   # ← السرعة التي طلبتها
 
 
 # =========================================
@@ -162,63 +163,3 @@ if __name__ == "__main__":
     # Keep engine alive
     while True:
         time.sleep(1)
-
-
-# =========================================
-# 9) WATI WEBHOOK LISTENER (NO FLASK)
-# =========================================
-
-import json
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class WATIWebhookHandler(BaseHTTPRequestHandler):
-
-    def do_POST(self):
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body.decode('utf-8'))
-
-            whatsapp_number = (
-                data.get("whatsappNumber")
-                or data.get("phone")
-                or data.get("from")
-                or data.get("contact", {}).get("phone")
-            )
-
-            message_text = (
-                data.get("message")
-                or data.get("text")
-                or data.get("body")
-            )
-
-            if whatsapp_number and message_text:
-                conn = pg_conn()
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT INTO wati_messages (whatsapp_number, message_text, replied)
-                    VALUES (%s, %s, FALSE)
-                """, (str(whatsapp_number), str(message_text)))
-                conn.commit()
-                cur.close()
-                conn.close()
-
-                print(f"📥 WATI MESSAGE STORED → {whatsapp_number}: {message_text}")
-
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
-
-        except Exception as e:
-            print("❌ WATI WEBHOOK ERROR:", e)
-            self.send_response(500)
-            self.end_headers()
-
-
-def start_wati_webhook_server():
-    server = HTTPServer(("0.0.0.0", 8080), WATIWebhookHandler)
-    print("🌐 WATI Webhook listening on port 8080")
-    server.serve_forever()
-
-
-Thread(target=start_wati_webhook_server, daemon=True).start()
