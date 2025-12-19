@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL + FLUSH)
+# WATI Webhook Receiver (FINAL - WATI PAYLOAD FIXED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -26,41 +26,15 @@ def receive_webhook():
     try:
         data = request.json or {}
 
-        # 🔴 طباعة البيانات الخام (إجباري مع flush)
         print("📦 RAW PAYLOAD FROM WATI ↓↓↓", flush=True)
         print(data, flush=True)
 
-        whatsapp_number = None
-        message_text = None
-
-        # ---------- شكل 1 ----------
-        if "message" in data and isinstance(data["message"], dict):
-            msg = data["message"]
-            whatsapp_number = msg.get("from") or msg.get("waId")
-            message_text = msg.get("text")
-
-        # ---------- شكل 2 ----------
-        if not whatsapp_number and "messages" in data and isinstance(data["messages"], list):
-            msg = data["messages"][0]
-            whatsapp_number = msg.get("from") or msg.get("waId")
-            message_text = msg.get("text") or msg.get("body")
-
-        # ---------- شكل 3 (fallback) ----------
-        whatsapp_number = (
-            whatsapp_number
-            or data.get("whatsappNumber")
-            or data.get("from")
-            or data.get("phone")
-        )
-        message_text = (
-            message_text
-            or data.get("messageText")
-            or data.get("text")
-            or data.get("body")
-        )
+        # ✅ استخراج صحيح حسب Payload الحقيقي
+        whatsapp_number = data.get("waId")
+        message_text = data.get("text")
 
         if not whatsapp_number or not message_text:
-            print("⚠️ MESSAGE RECEIVED BUT COULD NOT PARSE CONTENT", flush=True)
+            print("⚠️ MESSAGE RECEIVED BUT MISSING waId OR text", flush=True)
             return jsonify({"status": "ignored"}), 200
 
         supa = SPS.db()
