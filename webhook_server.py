@@ -1,7 +1,6 @@
 # ===============================
 # webhook_server.py
-# Unified Webhook (WATI + META)
-# FINAL - PRODUCTION READY
+# WATI Webhook Receiver (FINAL + TEXT COMMANDS)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -20,81 +19,105 @@ def healthz():
 
 
 # ---------------------------------
-# Unified Webhook
+# WATI Webhook Endpoint
 # ---------------------------------
 @app.route("/webhook", methods=["POST"])
 def receive_webhook():
-    data = request.json or {}
-    supa = SPS.db()
-
-    print("📦 RAW PAYLOAD ↓↓↓", flush=True)
-    print(data, flush=True)
-
-    # =====================================================
-    # 1️⃣ WATI PAYLOAD
-    # =====================================================
-    if "waId" in data:
-        try:
-            whatsapp_number = data.get("waId")
-            message_text = data.get("text")
-
-            if whatsapp_number and message_text:
-                supa.table("incoming_messages").insert({
-                    "whatsapp_number": str(whatsapp_number),
-                    "message_text": str(message_text),
-                    "source": "wati",
-                    "received_at": datetime.datetime.utcnow().isoformat()
-                }).execute()
-
-                print(
-                    f"✅ WATI SAVED {whatsapp_number}: {message_text}",
-                    flush=True
-                )
-
-            return jsonify({"status": "wati_ok"}), 200
-
-        except Exception as e:
-            print("❌ WATI ERROR:", e, flush=True)
-            return jsonify({"status": "wati_error"}), 500
-
-    # =====================================================
-    # 2️⃣ META CLOUD API PAYLOAD
-    # =====================================================
     try:
-        entry = data["entry"][0]["changes"][0]["value"]
-        metadata = entry.get("metadata", {})
-        messages = entry.get("messages", [])
+        data = request.json or {}
 
-        for msg in messages:
-            whatsapp_number = msg.get("from")
-            message_text = msg.get("text", {}).get("body")
+        print("📩 WEBHOOK RECEIVED")
+        print(data)
 
-            supa.table("incoming_messages_meta").insert({
-                "phone_number_id": metadata.get("phone_number_id"),
-                "display_phone_number": metadata.get("display_phone_number"),
-                "whatsapp_number": whatsapp_number,
-                "message_text": message_text,
-                "message_id": msg.get("id"),
-                "message_type": msg.get("type"),
-                "source": "meta",
-                "received_at": datetime.datetime.utcnow().isoformat(),
-                "raw_payload": data
-            }).execute()
+        # -----------------------------
+        # WhatsApp Number
+        # -----------------------------
+        whatsapp_number = (
+            data.get("whatsappNumber")
+            or data.get("phone")
+            or data.get("from")
+            or data.get("waId")
+            or data.get("contact", {}).get("phone")
+        )
 
-            print(
-                f"✅ META SAVED {whatsapp_number}: {message_text}",
-                flush=True
+        if not whatsapp_number:
+            print("⚠️ Missing whatsapp number")
+            return jsonify({"status": "ignored"}), 200
+
+        message_type = None
+        event_key = None
+        message_text = None
+
+        supa = SPS.db()
+
+        # =============================
+        # 1️⃣ TEXT MESSAGE
+        # =============================
+        if data.get("messageType") == "text":
+            message_type = "text"
+            message_text = (
+                data.get("text", {}).get("body")
+                or data.get("message")
+                or data.get("messageText")
+                or ""
+            ).strip()
+
+            # 🔎 search in text_commands
+            cmd = (
+                supa.table("text_commands")
+                .select("event_key")
+                .eq("keyword", message_text)
+                .eq("active", True)
+                .limit(1)
+                .execute()
             )
 
-        return jsonify({"status": "meta_ok"}), 200
+            if cmd.data:
+                event_key = cmd.data[0]["event_key"]
+            else:
+                event_key = "start"
+
+        # =============================
+        # 2️⃣ BUTTON CLICK
+        # =============================
+        elif (
+            data.get("messageType") == "interactive"
+            and data.get("interactive", {}).get("type") == "button_reply"
+        ):
+            message_type = "button"
+            event_key = data["interactive"]["button_reply"]["id"]
+            message_text = "[button]"
+
+        else:
+            print("⚠️ Unsupported message type")
+            return jsonify({"status": "ignored"}), 200
+
+        # -----------------------------
+        # Save to incoming_messages
+        # -----------------------------
+        supa.table("incoming_messages").insert({
+            "whatsapp_number": str(whatsapp_number),
+            "message_type": message_type,
+            "event_key": event_key,
+            "message_text": message_text,
+            "source": "wati",
+            "processed": False,
+            "received_at": datetime.datetime.utcnow().isoformat()
+        }).execute()
+
+        print(
+            f"✅ SAVED | type={message_type} | event={event_key} | from={whatsapp_number}"
+        )
+
+        return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print("⚠️ UNKNOWN PAYLOAD:", e, flush=True)
-        return jsonify({"status": "ignored"}), 200
+        print("❌ WEBHOOK ERROR:", e)
+        return jsonify({"status": "error"}), 500
 
 
 # ---------------------------------
-# Run Server (Render compatible)
+# Run Server
 # ---------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
