@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL - REAL PAYLOAD)
+# WATI Webhook Receiver (FINAL - BUTTON FIXED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -67,20 +67,26 @@ def receive_webhook():
                 event_key = "start"
 
         # =============================
-        # 2️⃣ BUTTON CLICK (WATI)
+        # 2️⃣ BUTTON CLICK (WATI FIX)
         # =============================
-        elif data.get("type") == "interactive" and data.get("buttonReply"):
-            message_type = "button"
-            event_key = data["buttonReply"].get("id")
-            message_text = "[button]"
+        elif data.get("type") == "interactive" and data.get("interactiveData"):
+            interactive = data.get("interactiveData")
 
-        # =============================
-        # 3️⃣ LIST CLICK (OPTIONAL)
-        # =============================
-        elif data.get("type") == "interactive" and data.get("listReply"):
-            message_type = "list"
-            event_key = data["listReply"].get("id")
-            message_text = "[list]"
+            # زر
+            if interactive.get("reply"):
+                message_type = "button"
+                event_key = interactive["reply"].get("id")
+                message_text = "[button]"
+
+            # قائمة (اختياري)
+            elif interactive.get("listReply"):
+                message_type = "list"
+                event_key = interactive["listReply"].get("id")
+                message_text = "[list]"
+
+            else:
+                print("⚠️ interactiveData بدون reply")
+                return jsonify({"status": "ignored"}), 200
 
         else:
             print("⚠️ Unsupported message type")
@@ -96,7 +102,7 @@ def receive_webhook():
             "message_text": message_text,
             "source": "wati",
             "processed": False,
-            "received_at": datetime.datetime.utcnow().isoformat()
+            "received_at": datetime.datetime.now(datetime.UTC).isoformat()
         }).execute()
 
         print(
