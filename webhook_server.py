@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL + TEXT COMMANDS)
+# WATI Webhook Receiver (FINAL - REAL PAYLOAD)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -26,22 +26,16 @@ def receive_webhook():
     try:
         data = request.json or {}
 
-        print("📩 WEBHOOK RECEIVED")
+        print("📦 RAW PAYLOAD ↓↓↓")
         print(data)
 
         # -----------------------------
-        # WhatsApp Number
+        # WhatsApp Number (WATI REAL)
         # -----------------------------
-        whatsapp_number = (
-            data.get("whatsappNumber")
-            or data.get("phone")
-            or data.get("from")
-            or data.get("waId")
-            or data.get("contact", {}).get("phone")
-        )
+        whatsapp_number = data.get("waId")
 
         if not whatsapp_number:
-            print("⚠️ Missing whatsapp number")
+            print("⚠️ Missing waId")
             return jsonify({"status": "ignored"}), 200
 
         message_type = None
@@ -51,16 +45,11 @@ def receive_webhook():
         supa = SPS.db()
 
         # =============================
-        # 1️⃣ TEXT MESSAGE
+        # 1️⃣ TEXT MESSAGE (WATI)
         # =============================
-        if data.get("messageType") == "text":
+        if data.get("type") == "text":
             message_type = "text"
-            message_text = (
-                data.get("text", {}).get("body")
-                or data.get("message")
-                or data.get("messageText")
-                or ""
-            ).strip()
+            message_text = (data.get("text") or "").strip()
 
             # 🔎 search in text_commands
             cmd = (
@@ -78,15 +67,20 @@ def receive_webhook():
                 event_key = "start"
 
         # =============================
-        # 2️⃣ BUTTON CLICK
+        # 2️⃣ BUTTON CLICK (WATI)
         # =============================
-        elif (
-            data.get("messageType") == "interactive"
-            and data.get("interactive", {}).get("type") == "button_reply"
-        ):
+        elif data.get("type") == "interactive" and data.get("buttonReply"):
             message_type = "button"
-            event_key = data["interactive"]["button_reply"]["id"]
+            event_key = data["buttonReply"].get("id")
             message_text = "[button]"
+
+        # =============================
+        # 3️⃣ LIST CLICK (OPTIONAL)
+        # =============================
+        elif data.get("type") == "interactive" and data.get("listReply"):
+            message_type = "list"
+            event_key = data["listReply"].get("id")
+            message_text = "[list]"
 
         else:
             print("⚠️ Unsupported message type")
