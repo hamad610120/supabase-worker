@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL)
+# WATI Webhook Receiver (FINAL - FIXED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -46,18 +46,14 @@ def receive_webhook():
         supa = SPS.db()
 
         # =============================
-        # 1️⃣ TEXT MESSAGE (TEXT + BUTTON FROM WATI)
+        # 1️⃣ TEXT MESSAGE
         # =============================
         if data.get("type") == "text":
             message_type = "text"
 
-            # قراءة النص
             raw_text = (data.get("text") or "").strip()
-
-            # تنظيف النص (إزالة الإيموجي والرموز)
             message_text = re.sub(r"[^\w\s]", "", raw_text).strip()
 
-            # البحث في text_commands
             cmd = (
                 supa.table("text_commands")
                 .select("event_key")
@@ -73,7 +69,31 @@ def receive_webhook():
                 event_key = "start"
 
         # =============================
-        # 2️⃣ INTERACTIVE (غير مستخدم فعليًا في WATI)
+        # 2️⃣ BUTTON MESSAGE (WATI)
+        # =============================
+        elif data.get("type") == "button":
+            message_type = "button"
+
+            raw_text = (data.get("text") or "").strip()
+            message_text = re.sub(r"[^\w\s]", "", raw_text).strip()
+
+            # حاول ربطه بـ text_commands
+            cmd = (
+                supa.table("text_commands")
+                .select("event_key")
+                .eq("keyword", message_text)
+                .eq("active", True)
+                .limit(1)
+                .execute()
+            )
+
+            if cmd.data:
+                event_key = cmd.data[0]["event_key"]
+            else:
+                event_key = message_text
+
+        # =============================
+        # 3️⃣ INTERACTIVE (لو استُخدم مستقبلًا)
         # =============================
         elif data.get("type") == "interactive" and data.get("interactiveData"):
             interactive = data.get("interactiveData")
