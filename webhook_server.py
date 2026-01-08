@@ -1,11 +1,12 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL - BUTTON FIXED)
+# WATI Webhook Receiver (FINAL)
 # ===============================
 
 from flask import Flask, request, jsonify
 import datetime
 import os
+import re
 import SPS  # Supabase connection
 
 app = Flask(__name__)
@@ -45,13 +46,18 @@ def receive_webhook():
         supa = SPS.db()
 
         # =============================
-        # 1️⃣ TEXT MESSAGE (WATI)
+        # 1️⃣ TEXT MESSAGE (TEXT + BUTTON FROM WATI)
         # =============================
         if data.get("type") == "text":
             message_type = "text"
-            message_text = (data.get("text") or "").strip()
 
-            # 🔎 search in text_commands
+            # قراءة النص
+            raw_text = (data.get("text") or "").strip()
+
+            # تنظيف النص (إزالة الإيموجي والرموز)
+            message_text = re.sub(r"[^\w\s]", "", raw_text).strip()
+
+            # البحث في text_commands
             cmd = (
                 supa.table("text_commands")
                 .select("event_key")
@@ -67,18 +73,16 @@ def receive_webhook():
                 event_key = "start"
 
         # =============================
-        # 2️⃣ BUTTON CLICK (WATI FIX)
+        # 2️⃣ INTERACTIVE (غير مستخدم فعليًا في WATI)
         # =============================
         elif data.get("type") == "interactive" and data.get("interactiveData"):
             interactive = data.get("interactiveData")
 
-            # زر
             if interactive.get("reply"):
                 message_type = "button"
                 event_key = interactive["reply"].get("id")
                 message_text = "[button]"
 
-            # قائمة (اختياري)
             elif interactive.get("listReply"):
                 message_type = "list"
                 event_key = interactive["listReply"].get("id")
