@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (UPDATED)
+# WATI Webhook Receiver (FINAL - STABLE)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -92,7 +92,7 @@ def receive_webhook():
                 event_key = message_text
 
         # =============================
-        # 3️⃣ INTERACTIVE (future)
+        # 3️⃣ INTERACTIVE (future use)
         # =============================
         elif data.get("type") == "interactive" and data.get("interactiveData"):
             interactive = data.get("interactiveData")
@@ -132,8 +132,11 @@ def receive_webhook():
             .execute()
         )
 
+        # ✅ احفظ ID الصحيح
+        message_id = insert_result.data[0]["id"]
+
         print(
-            f"✅ SAVED | type={message_type} | event={event_key} | from={whatsapp_number}"
+            f"✅ SAVED | id={message_id} | type={message_type} | event={event_key} | from={whatsapp_number}"
         )
 
         # ==================================================
@@ -166,7 +169,7 @@ def receive_webhook():
             print("🔘 BUTTONS:")
             print(buttons_payload)
 
-            # تحديث آخر رسالة لنفس الرقم
+            # ✅ تحديث السطر الصحيح باستخدام ID
             (
                 supa.table("incoming_messages")
                 .update({
@@ -178,9 +181,7 @@ def receive_webhook():
                     "reply_sent": True,
                     "reply_sent_at": datetime.datetime.now(datetime.UTC).isoformat()
                 })
-                .eq("whatsapp_number", str(whatsapp_number))
-                .order("received_at", desc=True)
-                .limit(1)
+                .eq("id", message_id)
                 .execute()
             )
 
