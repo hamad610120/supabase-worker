@@ -1,12 +1,11 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL - STABLE)
+# WATI Webhook Receiver (PAYLOAD BASED)
 # ===============================
 
 from flask import Flask, request, jsonify
 import datetime
 import os
-import re
 import SPS  # Supabase connection
 
 app = Flask(__name__)
@@ -34,158 +33,85 @@ def receive_webhook():
         # WhatsApp Number
         # -----------------------------
         whatsapp_number = data.get("waId")
-
         if not whatsapp_number:
             print("⚠️ Missing waId")
             return jsonify({"status": "ignored"}), 200
 
-        message_type = None
-        event_key = None
-        message_text = None
+        # -----------------------------
+        # Extract payload (ONLY)
+        # -----------------------------
+        selected_payload = None
+        message_type = data.get("type")
+
+        # Button click
+        if message_type == "button":
+            selected_payload = data.get("payload")
+
+        # List selection
+        elif message_type == "list":
+            selected_payload = data.get("payload")
+
+        # Interactive (future / safety)
+        elif message_type == "interactive":
+            interactive = data.get("interactiveData") or {}
+            if interactive.get("reply"):
+                selected_payload = interactive["reply"].get("id")
+            elif interactive.get("listReply"):
+                selected_payload = interactive["listReply"].get("id")
+
+        # Text messages → ignore logic, no payload
+        else:
+            print("ℹ️ Text or unsupported type received (no payload)")
 
         supa = SPS.db()
 
-        # =============================
-        # 1️⃣ TEXT MESSAGE
-        # =============================
-        if data.get("type") == "text":
-            message_type = "text"
-
-            raw_text = (data.get("text") or "").strip()
-            message_text = re.sub(r"[^\w\s]", "", raw_text).strip()
-
-            cmd = (
-                supa.table("text_commands")
-                .select("event_key")
-                .eq("keyword", message_text)
-                .eq("active", True)
-                .limit(1)
-                .execute()
-            )
-
-            if cmd.data:
-                event_key = cmd.data[0]["event_key"]
-            else:
-                event_key = "start"
-
-        # =============================
-        # 2️⃣ BUTTON MESSAGE
-        # =============================
-        elif data.get("type") == "button":
-            message_type = "button"
-
-            raw_text = (data.get("text") or "").strip()
-            message_text = re.sub(r"[^\w\s]", "", raw_text).strip()
-
-            cmd = (
-                supa.table("text_commands")
-                .select("event_key")
-                .eq("keyword", message_text)
-                .eq("active", True)
-                .limit(1)
-                .execute()
-            )
-
-            if cmd.data:
-                event_key = cmd.data[0]["event_key"]
-            else:
-                event_key = message_text
-
-        # =============================
-        # 3️⃣ INTERACTIVE (future use)
-        # =============================
-        elif data.get("type") == "interactive" and data.get("interactiveData"):
-            interactive = data.get("interactiveData")
-
-            if interactive.get("reply"):
-                message_type = "button"
-                event_key = interactive["reply"].get("id")
-                message_text = "[button]"
-
-            elif interactive.get("listReply"):
-                message_type = "list"
-                event_key = interactive["listReply"].get("id")
-                message_text = "[list]"
-
-            else:
-                print("⚠️ interactiveData without reply")
-                return jsonify({"status": "ignored"}), 200
-
-        else:
-            print("⚠️ Unsupported message type")
-            return jsonify({"status": "ignored"}), 200
-
         # -----------------------------
-        # Save incoming message
+        # Save incoming event
         # -----------------------------
-        insert_result = (
+        (
             supa.table("incoming_messages")
             .insert({
                 "whatsapp_number": str(whatsapp_number),
+                "selected_payload": selected_payload,
                 "message_type": message_type,
-                "event_key": event_key,
-                "message_text": message_text,
                 "source": "wati",
-                "processed": False,
+                "record_type": "user",
                 "received_at": datetime.datetime.now(datetime.UTC).isoformat()
             })
             .execute()
         )
 
-        # ✅ احفظ ID الصحيح
-        message_id = insert_result.data[0]["id"]
-
         print(
-            f"✅ SAVED | id={message_id} | type={message_type} | event={event_key} | from={whatsapp_number}"
+            f"✅ RECEIVED | from={whatsapp_number} | payload={selected_payload}"
         )
 
-        # ==================================================
-        # 🤖 AUTO RESPONSE FROM conversation_flows
-        # ==================================================
-
-        # نبدأ دائمًا بـ welcome
-        flow_name = "welcome"
-        step_number = 1
-
-        flow = (
-            supa.table("conversation_flows")
-            .select("*")
-            .eq("flow_name", flow_name)
-            .eq("step_number", step_number)
-            .eq("active", True)
-            .limit(1)
+        # -----------------------------
+        # Call decision engine (DB)
+        # -----------------------------
+        decision = (
+            supa.rpc("apply_next_action", {"p_whatsapp": str(whatsapp_number)})
             .execute()
         )
 
-        if flow.data:
-            flow_data = flow.data[0]
+        if not decision.data:
+            print("⚠️ No action returned")
+            return jsonify({"status": "ok"}), 200
 
-            reply_text = flow_data.get("reply_text")
-            buttons_payload = flow_data.get("buttons_payload")
-            expected_response_type = flow_data.get("expected_response_type")
+        action = decision.data[0]
 
-            print("🤖 AUTO REPLY:")
-            print(reply_text)
-            print("🔘 BUTTONS:")
-            print(buttons_payload)
+        print("🤖 NEXT ACTION ↓↓↓")
+        print(action)
 
-            # ✅ تحديث السطر الصحيح باستخدام ID
-            (
-                supa.table("incoming_messages")
-                .update({
-                    "flow_name": flow_name,
-                    "step_number": step_number,
-                    "expected_response_type": expected_response_type,
-                    "system_reply_text": reply_text,
-                    "buttons_payload": buttons_payload,
-                    "reply_sent": True,
-                    "reply_sent_at": datetime.datetime.now(datetime.UTC).isoformat()
-                })
-                .eq("id", message_id)
-                .execute()
-            )
+        # -------------------------------------------------
+        # IMPORTANT:
+        # We DO NOT send messages from here.
+        # We only return the decision to the sender service.
+        # -------------------------------------------------
 
-        return jsonify({"status": "ok"}), 200
+        return jsonify({
+            "status": "ok",
+            "next_action": action
+        }), 200
 
     except Exception as e:
         print("❌ WEBHOOK ERROR:", e)
