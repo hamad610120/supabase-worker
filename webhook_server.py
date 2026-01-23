@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (REFACTORED - RECEIVE ONLY)
+# WATI Webhook Receiver (SAFE VERSION)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -28,63 +28,57 @@ def receive_webhook():
             return jsonify({"status": "ignored"}), 200
 
         # ===============================
-        # Detect message type
+        # Detect message
         # ===============================
         message_type = "text"
         message_text = None
-        selected_list_id = None
+        selected_payload = None
 
-        # 🔘 Button reply (treated as list)
         if data.get("buttonReply"):
             message_type = "list"
-            selected_list_id = data["buttonReply"].get("payload")
+            selected_payload = data["buttonReply"].get("payload")
 
-        # 📋 List reply
         elif data.get("listReply"):
             message_type = "list"
-            selected_list_id = data["listReply"].get("id")
+            selected_payload = data["listReply"].get("id")
 
-        # 📝 Plain text
         else:
             message_type = "text"
             message_text = data.get("text")
-
-        # ===============================
-        # Effective list id logic
-        # ===============================
-        if message_type == "list" and selected_list_id:
-            effective_list_id = selected_list_id
-        else:
-            effective_list_id = "TEXT_ANY"
 
         # ===============================
         # Save incoming message
         # ===============================
         supa = SPS.db()
 
-        supa.table("incoming_messages").insert({
+        insert_data = {
             "whatsapp_number": whatsapp_number,
-            "message_type": message_type,          # text | list
-            "message_text": message_text,          # only if text
-            "selected_option": selected_list_id,   # only if list
-            "effective_list_id": effective_list_id,
+            "message_type": message_type,
+            "message_text": message_text,
+            "selected_payload": selected_payload,
             "record_type": "user",
             "sent": False,
             "source": "wati",
-            "received_at": datetime.datetime.now(datetime.UTC).isoformat()
-        }).execute()
+            "received_at": datetime.datetime.utcnow().isoformat()
+        }
+
+        print("📝 INSERT DATA ↓↓↓")
+        print(insert_data)
+
+        supa.table("incoming_messages").insert(insert_data).execute()
 
         print(
-            f"✅ RECEIVED | from={whatsapp_number} "
+            f"✅ SAVED | from={whatsapp_number} "
             f"| type={message_type} "
-            f"| effective_list_id={effective_list_id}"
+            f"| payload={selected_payload}"
         )
 
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print("❌ WEBHOOK ERROR:", e)
-        return jsonify({"status": "error"}), 500
+        print("❌ WEBHOOK ERROR:")
+        print(e)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
