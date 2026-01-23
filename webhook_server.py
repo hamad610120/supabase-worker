@@ -1,10 +1,10 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (SAFE VERSION)
+# WATI Webhook Receiver (FINAL - CLEAN)
 # ===============================
 
 from flask import Flask, request, jsonify
-import datetime
+from datetime import datetime, timezone
 import SPS  # Supabase connection
 
 app = Flask(__name__)
@@ -28,49 +28,63 @@ def receive_webhook():
             return jsonify({"status": "ignored"}), 200
 
         # ===============================
-        # Detect message
+        # Detect message type & payload
         # ===============================
         message_type = "text"
         message_text = None
         selected_payload = None
 
+        # Button reply (treated as list)
         if data.get("buttonReply"):
             message_type = "list"
             selected_payload = data["buttonReply"].get("payload")
 
+        # List reply
         elif data.get("listReply"):
             message_type = "list"
             selected_payload = data["listReply"].get("id")
 
+        # Plain text
         else:
             message_type = "text"
             message_text = data.get("text")
 
         # ===============================
-        # Save incoming message
+        # Effective list id (CORE LOGIC)
         # ===============================
-        supa = SPS.db()
+        if message_type == "list" and selected_payload:
+            effective_list_id = selected_payload
+        else:
+            effective_list_id = "TEXT_ANY"
 
+        # ===============================
+        # Prepare insert data
+        # ===============================
         insert_data = {
             "whatsapp_number": whatsapp_number,
-            "message_type": message_type,
-            "message_text": message_text,
-            "selected_payload": selected_payload,
+            "message_type": message_type,          # text | list
+            "message_text": message_text,          # only if text
+            "selected_payload": selected_payload,  # only if list
+            "effective_list_id": effective_list_id,
             "record_type": "user",
             "sent": False,
             "source": "wati",
-            "received_at": datetime.datetime.utcnow().isoformat()
+            "received_at": datetime.now(timezone.utc).isoformat()
         }
 
         print("📝 INSERT DATA ↓↓↓")
         print(insert_data)
 
+        # ===============================
+        # Insert into Supabase
+        # ===============================
+        supa = SPS.db()
         supa.table("incoming_messages").insert(insert_data).execute()
 
         print(
             f"✅ SAVED | from={whatsapp_number} "
             f"| type={message_type} "
-            f"| payload={selected_payload}"
+            f"| effective_list_id={effective_list_id}"
         )
 
         return jsonify({"status": "ok"}), 200
