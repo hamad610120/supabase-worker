@@ -3,3 +3,4 @@ supabase
 requests
 python-dotenv
 flask
+reportlab
