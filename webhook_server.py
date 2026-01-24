@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Receiver + Sender (FINAL FULL)
+# WATI Receiver + Sender (FINAL FIXED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -88,17 +88,11 @@ def send_list(phone, title, button, rows):
     requests.post(url, headers=headers, json=payload, timeout=15)
 
 # ===============================
-# Message Resolver
+# Resolver
 # ===============================
 def resolve_effective_list_id(message_type, text, payload):
     if message_type == "list" and payload:
         return payload
-
-    if message_type == "text":
-        txt = (text or "").strip().lower()
-        if txt in ["تم", "confirm", "ok"]:
-            return "order_confirm"
-
     return "TEXT_ANY"
 
 # ===============================
@@ -118,7 +112,7 @@ def get_action(effective_list_id, message_type):
     return res.data[0] if res.data else None
 
 # ===============================
-# Data Providers
+# Data Providers (Invoices)
 # ===============================
 def get_invoices_list(phone, limit=20):
     res = (
@@ -132,19 +126,18 @@ def get_invoices_list(phone, limit=20):
     )
 
     rows = res.data or []
-    invoices = {}
+    seen = set()
+    result = []
 
     for r in rows:
         key = f"{r['bill_no']}_{r['bill_ser']}"
-        if key not in invoices:
-            invoices[key] = r
-
-    result = []
-    for inv in invoices.values():
+        if key in seen:
+            continue
+        seen.add(key)
         result.append({
-            "id": f"inv_{inv['bill_no']}_{inv['bill_ser']}",
-            "title": f"فاتورة #{inv['bill_no']} ({inv['bill_type']})",
-            "description": f"{inv['bill_total']} {inv['currency']}"
+            "id": f"inv_{r['bill_no']}_{r['bill_ser']}",
+            "title": f"فاتورة #{r['bill_no']} ({r['bill_type']})",
+            "description": f"{r['bill_total']} {r['currency']}"
         })
 
     return result
@@ -183,64 +176,77 @@ def get_invoice_details(phone, bill_no, bill_ser):
     return "\n".join(lines)
 
 # ===============================
-# Execution Engine
+# Execution Engine (FIXED)
 # ===============================
 def execute_action(action, phone, msg_id, effective_list_id):
+    action_type = action["action_type"]
+    response = action["response_format"]
     entity = action["entity_type"]
     query = action["query_key"]
 
-    # ===== ROOT SERVICES =====
-    if query == "services_root":
-        send_list(
-            phone,
-            "اختر الخدمة المطلوبة:",
-            "قائمة الخدمات",
-            [
-                {"id": "service_orders", "title": "📦 طلباتي"},
-                {"id": "service_invoices", "title": "🧾 فواتيري"},
-                {"id": "service_account", "title": "💳 كشف حسابي"}
-            ]
-        )
-        mark_processed(msg_id, "ROOT_MENU")
-        return
+    # ---------- SEND LIST ----------
+    if action_type == "send_list" and response == "list":
 
-    # ===== INVOICES LIST =====
-    if entity == "invoices" and query == "last_invoices_by_phone":
-        rows = get_invoices_list(phone, action.get("limit_count") or 20)
-        if not rows:
-            send_text(phone, action["error_message"])
-            mark_processed(msg_id, "NO_INVOICES", sent=False)
+        # Root services
+        if query == "services_root":
+            send_list(
+                phone,
+                "اختر الخدمة المطلوبة:",
+                "قائمة الخدمات",
+                [
+                    {"id": "service_orders", "title": "📦 طلباتي"},
+                    {"id": "service_invoices", "title": "🧾 فواتيري"},
+                    {"id": "service_account", "title": "💳 كشف حسابي"}
+                ]
+            )
+            mark_processed(msg_id, "ROOT_MENU_SENT")
             return
 
-        send_list(phone, "🧾 فواتيرك", "اختر الفاتورة", rows)
-        mark_processed(msg_id, "INVOICES_LIST")
-        return
+        # Invoices list
+        if entity == "invoices" and query == "last_invoices_by_phone":
+            rows = get_invoices_list(phone, action.get("limit_count") or 20)
+            if not rows:
+                send_text(phone, action["error_message"])
+                mark_processed(msg_id, "NO_INVOICES", sent=False)
+                return
 
-    # ===== INVOICE DETAILS =====
-    if entity == "invoices" and effective_list_id.startswith("inv_"):
-        try:
-            _, bill_no, bill_ser = effective_list_id.split("_", 2)
-        except Exception:
-            send_text(phone, "❌ رقم فاتورة غير صحيح")
-            mark_processed(msg_id, "INVALID_INVOICE", sent=False)
+            send_list(phone, "🧾 فواتيرك", "اختر الفاتورة", rows)
+            mark_processed(msg_id, "INVOICES_LIST_SENT")
             return
 
-        text = get_invoice_details(phone, bill_no, bill_ser)
-        if not text:
-            send_text(phone, action["error_message"])
-            mark_processed(msg_id, "NO_INVOICE_DETAILS", sent=False)
+    # ---------- EXECUTE ----------
+    if action_type == "execute":
+
+        # Invoice details
+        if entity == "invoices" and effective_list_id.startswith("inv_"):
+            try:
+                _, bill_no, bill_ser = effective_list_id.split("_", 2)
+            except Exception:
+                send_text(phone, "❌ اختيار غير صحيح")
+                mark_processed(msg_id, "INVALID_INVOICE", sent=False)
+                return
+
+            text = get_invoice_details(phone, bill_no, bill_ser)
+            if not text:
+                send_text(phone, action["error_message"])
+                mark_processed(msg_id, "NO_INVOICE_DETAILS", sent=False)
+                return
+
+            send_text(phone, text)
+            mark_processed(msg_id, "INVOICE_DETAILS_SENT")
             return
 
-        send_text(phone, text)
-        mark_processed(msg_id, "INVOICE_DETAILS")
+        # Default execute
+        send_text(phone, action.get("success_message") or "✅ تم التنفيذ")
+        mark_processed(msg_id, "EXECUTED")
         return
 
-    # ===== DEFAULT EXECUTE =====
-    send_text(phone, action.get("success_message") or "✅ تم تنفيذ العملية")
-    mark_processed(msg_id, "EXECUTED")
+    # ---------- FALLBACK ----------
+    send_text(phone, "⚠️ الخدمة غير متاحة")
+    mark_processed(msg_id, "NO_ACTION", sent=False)
 
 # ===============================
-# Webhook Endpoint
+# Webhook
 # ===============================
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -285,8 +291,8 @@ def webhook():
 
         action = get_action(effective_list_id, message_type)
         if not action:
-            send_text(wa, "⚠️ الخدمة غير متاحة حالياً")
-            mark_processed(msg_id, "NO_ACTION", sent=False)
+            send_text(wa, "اختر الخدمة المطلوبة:")
+            mark_processed(msg_id, "NO_MATCH", sent=False)
             return jsonify({"status": "ok"}), 200
 
         execute_action(action, wa, msg_id, effective_list_id)
