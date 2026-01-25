@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL - CLEAN)
+# WATI Webhook Receiver (FINAL LOCKED)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -28,9 +28,9 @@ def receive_webhook():
             return jsonify({"status": "ignored"}), 200
 
         # ===============================
-        # Detect message type & payload
+        # Detect message type
         # ===============================
-        message_type = "text"
+        message_type = None
         message_text = None
         selected_payload = None
 
@@ -50,23 +50,14 @@ def receive_webhook():
             message_text = data.get("text")
 
         # ===============================
-        # Effective list id (CORE LOGIC)
-        # ===============================
-        if message_type == "list" and selected_payload:
-            effective_list_id = selected_payload
-        else:
-            effective_list_id = "TEXT_ANY"
-
-        # ===============================
-        # Prepare insert data
+        # Prepare insert data (STRICT)
         # ===============================
         insert_data = {
             "whatsapp_number": whatsapp_number,
-            "message_type": message_type,          # text | list
-            "message_text": message_text,          # only if text
+            "message_type": message_type,      # text | list
+            "message_text": message_text,      # only if text
             "selected_payload": selected_payload,  # only if list
-            "effective_list_id": effective_list_id,
-            "record_type": "user",
+            "processed": False,
             "sent": False,
             "source": "wati",
             "received_at": datetime.now(timezone.utc).isoformat()
@@ -76,7 +67,7 @@ def receive_webhook():
         print(insert_data)
 
         # ===============================
-        # Insert into Supabase
+        # Insert into incoming_messages
         # ===============================
         supa = SPS.db()
         supa.table("incoming_messages").insert(insert_data).execute()
@@ -84,7 +75,7 @@ def receive_webhook():
         print(
             f"✅ SAVED | from={whatsapp_number} "
             f"| type={message_type} "
-            f"| effective_list_id={effective_list_id}"
+            f"| payload={selected_payload}"
         )
 
         return jsonify({"status": "ok"}), 200
