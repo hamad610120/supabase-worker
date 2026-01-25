@@ -1,6 +1,6 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL LOCKED – TABLE COMPATIBLE)
+# WATI Webhook Receiver – PAYLOAD BASED (FINAL)
 # ===============================
 
 from flask import Flask, request, jsonify
@@ -59,20 +59,40 @@ def receive_webhook():
             message_text = data.get("text")
 
         # ===============================
-        # Prepare insert data (MATCH TABLE)
+        # Resolve command_key (VERY IMPORTANT)
+        # ===============================
+        command_key = "MAIN_MENU"
+
+        # إذا جاء payload → تفاصيل فاتورة
+        if message_type == "list" and selected_payload:
+            command_key = "INVOICE_DETAILS"
+
+        # إذا نص
+        elif message_type == "text" and message_text:
+            txt = message_text.strip()
+
+            if txt in ["فواتيري", "فواتير", "فواتيرى"]:
+                command_key = "INVOICES"
+            else:
+                command_key = "MAIN_MENU"
+
+        # ===============================
+        # Prepare insert data
         # ===============================
         insert_data = {
             "whatsapp_number": str(whatsapp_number),
-            "message_type": message_type,              # text | list
-            "message_text": message_text,              # only if text
-            "selected_payload": selected_payload,      # only if list
+            "message_type": message_type,
+            "message_text": message_text,
+            "selected_payload": selected_payload,
 
             # REQUIRED BY TABLE
             "effective_list_id": selected_payload if message_type == "list" else "TEXT_ANY",
             "record_type": "user",
 
-            # DEFAULT FLAGS
-            "source": "wati",
+            # 🔑 KEY PART
+            "source": command_key,
+
+            # FLAGS
             "sent": False,
             "processed": False,
             "received_at": datetime.now(timezone.utc).isoformat()
