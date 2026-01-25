@@ -1,11 +1,10 @@
 # ===============================
 # webhook_server.py
-# WATI Webhook Receiver (FINAL – LOCKED)
+# FINAL – LOCKED FOREVER
 # ===============================
 
 from flask import Flask, request, jsonify
 from datetime import datetime, timezone
-import traceback
 import SPS
 
 app = Flask(__name__)
@@ -18,63 +17,49 @@ def healthz():
 
 @app.route("/webhook", methods=["POST"])
 def receive_webhook():
-    try:
-        data = request.json or {}
+    data = request.json or {}
 
-        # ===============================
-        # Get WhatsApp number
-        # ===============================
-        whatsapp_number = (
-            data.get("waId")
-            or data.get("wa_id")
-            or data.get("whatsapp_number")
-        )
+    whatsapp_number = (
+        data.get("waId")
+        or data.get("wa_id")
+        or data.get("whatsapp_number")
+    )
 
-        if not whatsapp_number:
-            return jsonify({"status": "ignored"}), 200
+    if not whatsapp_number:
+        return jsonify({"status": "ignored"}), 200
 
-        # ===============================
-        # Detect message type
-        # ===============================
-        message_type = "text"
-        message_text = None
-        selected_payload = None
+    message_type = "text"
+    message_text = None
+    selected_payload = None
 
-        if data.get("buttonReply"):
-            message_type = "list"
-            selected_payload = data["buttonReply"].get("payload")
+    if data.get("buttonReply"):
+        message_type = "list"
+        selected_payload = data["buttonReply"].get("payload")
 
-        elif data.get("listReply"):
-            message_type = "list"
-            selected_payload = data["listReply"].get("id")
+    elif data.get("listReply"):
+        message_type = "list"
+        selected_payload = data["listReply"].get("id")
 
-        else:
-            message_text = data.get("text")
+    else:
+        message_text = data.get("text")
 
-        # ===============================
-        # Insert RAW event (NO LOGIC)
-        # ===============================
-        insert_data = {
-            "whatsapp_number": str(whatsapp_number),
-            "message_type": message_type,
-            "message_text": message_text,
-            "selected_payload": selected_payload,
-            "effective_list_id": selected_payload if message_type == "list" else "TEXT",
-            "record_type": "user",
-            "source": None,               # ❌ لا قرار هنا
-            "sent": False,
-            "processed": False,
-            "received_at": datetime.now(timezone.utc).isoformat()
-        }
+    insert_data = {
+        "whatsapp_number": str(whatsapp_number),
+        "message_type": message_type,
+        "message_text": message_text,
+        "selected_payload": selected_payload,
+        "effective_list_id": selected_payload if message_type == "list" else "TEXT",
+        "record_type": "user",
+        "source": None,
+        "sent": False,
+        "processed": False,
+        "received_at": datetime.now(timezone.utc).isoformat()
+    }
 
-        supa = SPS.db()
-        supa.table("incoming_messages").insert(insert_data).execute()
+    supa = SPS.db()
+    supa.table("incoming_messages").insert(insert_data).execute()
 
-        return jsonify({"status": "ok"}), 200
-
-    except Exception:
-        traceback.print_exc()
-        return jsonify({"status": "error"}), 500
+    return jsonify({"status": "ok"}), 200
 
 
 if __name__ == "__main__":
